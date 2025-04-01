@@ -32,7 +32,7 @@ jobs:
 
     - name: Initialize CodeQL
         id: initialize
-        uses: github/codeql-action/init@1a7989f3955e0c69f0e0ccc14aee54a387a0fd31
+        uses: github/codeql-action/init@dd746615b3b9d728a6a37ca2045b68ca76d4841a
         with:
           languages: typescript, javascript
           source-root: src
