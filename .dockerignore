@@ -1,0 +1,115 @@
+# Security-focused .dockerignore
+# Prevents sensitive files from being included in Docker context
+
+# Development and CI files
+.git
+.gitignore
+.github/
+.vscode/
+.idea/
+
+# Documentation
+README.md
+SECURITY.md
+*.md
+docs/
+
+# Dependencies that will be installed in container
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and configuration files (security sensitive)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.example
+
+# Next.js build output and cache
+.next/
+out/
+build/
+dist/
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Temporary folders
+tmp/
+temp/
+.tmp/
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Editor backup files
+*.swp
+*.swo
+*~
+
+# Security scan results
+security-report.json
+vulnerability-report.json
+
+# Package manager lock files (will be copied explicitly)
+package-lock.json
+yarn.lock
+
+# Local development tools
+.history/
+
+# Backup files
+*.backup
+*.bak
+
+# Any secrets or keys (additional protection)
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+keys/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache directories  
+.cache/
+.parcel-cache/
+
+# OS generated files
+*.orig

@@ -3,11 +3,14 @@ import { useForm } from "react-hook-form";
 import { ReadonlyURLSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { NETWORKS } from "@/app/constants";
-import { calculateHashes } from "@/components/safeHashesComponent";
-import { fetchTransactionDataFromApi } from "@/utils/api";
+import { UltraSecureHashCalculator } from "@/lib/secure-hash-calculator";
+import { fetchSecureTransactionDataFromApi } from "@/utils/secure-api";
 import { FormData, CalculationResult, TransactionParams } from "@/types/form-types";
 import { decodeTransactionData } from "@/utils/decoding/transactionData";
 import { encodeExecTransaction } from "@/utils/encoding/execTransaction";
+import { SecureValidator, SecureLogger, processError } from "@/lib/security";
+import { sanitizeHtml, sanitizeAddress } from "@/lib/secure-output";
+import { cryptoIntegrity } from "@/lib/crypto-integrity";
 
 export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams) {
   const [result, setResult] = useState<CalculationResult | null>(null);
@@ -17,28 +20,64 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
 
   const { toast } = useToast();
 
-  // Extract parameters from URL
-  const [safeAddress] = useState(searchParams.get("safeAddress") || "");
+  // Extract parameters from URL with comprehensive security validation
+  const validator = SecureValidator.getInstance();
+  
+  const [safeAddress] = useState(() => {
+    try {
+      const rawAddress = searchParams.get("safeAddress") || "";
+      return sanitizeHtml(rawAddress);
+    } catch (error) {
+      SecureLogger.error('Failed to extract safe address from URL', error as Error);
+      return "";
+    }
+  });
+  
   const [network] = useState(() => {
-    const prefix = safeAddress.split(":")[0];
-    return NETWORKS.find((n) => n.gnosisPrefix === prefix)?.value || "";
-  });
-
-  const [chainId] = useState(() => {
-    const prefix = safeAddress.split(":")[0];
-    return NETWORKS.find((n) => n.gnosisPrefix === prefix)?.chainId || "";
-  });
-
-  const [address] = useState(() => {
-    const _address = safeAddress.match(/0x[a-fA-F0-9]{40}/)?.[0];
-    if (_address) {
-      return _address;
-    } else {
+    try {
+      const prefix = safeAddress.split(":")[0];
+      const foundNetwork = NETWORKS.find((n) => n.gnosisPrefix === prefix);
+      return foundNetwork ? validator.validateNetworkName(foundNetwork.value) : "";
+    } catch (error) {
+      SecureLogger.error('Failed to extract network from URL', error as Error);
       return "";
     }
   });
 
-  const [nonce] = useState(searchParams.get("nonce") || "");
+  const [chainId] = useState(() => {
+    try {
+      const prefix = safeAddress.split(":")[0];
+      const foundNetwork = NETWORKS.find((n) => n.gnosisPrefix === prefix);
+      return foundNetwork?.chainId.toString() || "";
+    } catch (error) {
+      SecureLogger.error('Failed to extract chain ID from URL', error as Error);
+      return "";
+    }
+  });
+
+  const [address] = useState(() => {
+    try {
+      const _address = safeAddress.match(/0x[a-fA-F0-9]{40}/)?.[0];
+      if (_address) {
+        return sanitizeAddress(_address);
+      } else {
+        return "";
+      }
+    } catch (error) {
+      SecureLogger.error('Failed to extract address from URL', error as Error);
+      return "";
+    }
+  });
+
+  const [nonce] = useState(() => {
+    try {
+      const rawNonce = searchParams.get("nonce") || "";
+      return rawNonce ? validator.validateNonce(rawNonce).toString() : "";
+    } catch (error) {
+      SecureLogger.error('Failed to extract nonce from URL', error as Error);
+      return "";
+    }
+  });
 
   // Initialize form
   const form = useForm<FormData>({
@@ -114,31 +153,51 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
     setCalculationRequested(true);
   
     try {
+      // Input validation with security controls
+      const validatedData = {
+        network: validator.validateNetworkName(data.network),
+        address: validator.validateEthereumAddress(data.address),
+        nonce: validator.validateNonce(data.nonce).toString(),
+        chainId: data.chainId,
+        to: validator.validateEthereumAddress(data.to),
+        value: validator.sanitizeString(data.value),
+        data: validator.validateHexData(data.data),
+        operation: validator.sanitizeString(data.operation),
+        safeTxGas: validator.sanitizeString(data.safeTxGas),
+        baseGas: validator.sanitizeString(data.baseGas),
+        gasPrice: validator.sanitizeString(data.gasPrice),
+        gasToken: validator.validateEthereumAddress(data.gasToken),
+        refundReceiver: validator.validateEthereumAddress(data.refundReceiver),
+        version: validator.sanitizeString(data.version),
+        method: data.method
+      };
+      
       let txParams: TransactionParams = {
-        to: data.to,
-        value: data.value,
-        data: data.data,
-        operation: data.operation,
-        safeTxGas: data.safeTxGas,
-        baseGas: data.baseGas,
-        gasPrice: data.gasPrice,
-        gasToken: data.gasToken,
-        refundReceiver: data.refundReceiver,
-        nonce: data.nonce,
-        version: data.version,
+        to: validatedData.to,
+        value: validatedData.value,
+        data: validatedData.data,
+        operation: validatedData.operation,
+        safeTxGas: validatedData.safeTxGas,
+        baseGas: validatedData.baseGas,
+        gasPrice: validatedData.gasPrice,
+        gasToken: validatedData.gasToken,
+        refundReceiver: validatedData.refundReceiver,
+        nonce: validatedData.nonce,
+        version: validatedData.version,
         dataDecoded: null
       };
       
-      if (data.method === "api") {
+      if (validatedData.method === "api") {
         try {
-          txParams = await fetchTransactionDataFromApi(
-            data.network,
-            data.address,
-            data.nonce
+          txParams = await fetchSecureTransactionDataFromApi(
+            validatedData.network,
+            validatedData.address,
+            validatedData.nonce
           );
         } catch (error: any) {
           setCalculationRequested(false);
-          throw new Error(`API Error: ${error.message}`);
+          const secureError = processError(error, { method: 'api', network: validatedData.network });
+          throw new Error(secureError.userMessage);
         }
       }
 
@@ -163,14 +222,12 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
         txParams.signatures || "0x"
       );
       
-      const {
-        domainHash,
-        messageHash,
-        safeTxHash,
-        encodedMessage
-      } = await calculateHashes(
-        data.chainId.toString(),
-        data.address,
+      // Use secure hash calculator with integrity verification
+      const calculator = UltraSecureHashCalculator.getInstance();
+      
+      const hashResult = await calculator.calculateHashes(
+        validatedData.chainId.toString(),
+        validatedData.address,
         txParams.to,
         txParams.value,
         txParams.data,
@@ -183,95 +240,124 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
         txParams.nonce,
         txParams.version
       );
+      
+      const { domainHash, messageHash, safeTxHash, encodedMessage } = hashResult;
+      
+      // Verify cryptographic integrity
+      if (!cryptoIntegrity.verifyDomainHash(
+        validatedData.chainId.toString(),
+        validatedData.address,
+        txParams.version,
+        domainHash
+      )) {
+        throw new Error('Domain hash integrity verification failed');
+      }
+      
+      if (!cryptoIntegrity.verifyTransactionHash(
+        txParams.version,
+        { to: txParams.to, value: txParams.value, data: txParams.data },
+        safeTxHash
+      )) {
+        throw new Error('Transaction hash integrity verification failed');
+      }
 
       let nestedSafe = null;
       if (data.nestedSafeEnabled && data.nestedSafeAddress && data.nestedSafeNonce) {
+        try {
+          // Validate nested Safe parameters
+          const nestedSafeAddress = validator.validateEthereumAddress(data.nestedSafeAddress);
+          const nestedSafeNonce = validator.validateNonce(data.nestedSafeNonce).toString();
+          const nestedSafeVersion = validator.sanitizeString(data.nestedSafeVersion || txParams.version);
 
-        const to = data.address;
-        const value = "0";
-        const approveHashSignature = "0xd4d9bdcd"; //approveHash(bytes32)
-        const dataPayload = `${approveHashSignature}${safeTxHash.slice(2)}`;
-        const operation = "0";
-        const safeTxGas = "0";
-        const baseGas = "0";
-        const gasPrice = "0";
-        const gasToken = "0x0000000000000000000000000000000000000000";
-        const refundReceiver = "0x0000000000000000000000000000000000000000";
-        
-        const nestedSafeVersion = data.nestedSafeVersion || txParams.version;
+          const nestedSafeResult = await calculator.calculateNestedSafeApprovalHash(
+            validatedData.chainId.toString(),
+            validatedData.address,
+            nestedSafeAddress,
+            nestedSafeNonce,
+            safeTxHash,
+            nestedSafeVersion
+          );
+          
+          // Verify nested Safe hash integrity
+          if (!cryptoIntegrity.verifyTransactionHash(
+            nestedSafeVersion,
+            { to: validatedData.address, operation: '0' },
+            nestedSafeResult.safeTxHash
+          )) {
+            throw new Error('Nested Safe hash integrity verification failed');
+          }
 
-        const nestedSafeResult = await calculateHashes(
-          data.chainId.toString(),
-          data.nestedSafeAddress,
-          to,
-          value,
-          dataPayload,
-          operation,
-          safeTxGas,
-          baseGas,
-          gasPrice,
-          gasToken,
-          refundReceiver,
-          data.nestedSafeNonce.toString(),
-          nestedSafeVersion
-        );
-
-        nestedSafe = {
-          safeTxHash: nestedSafeResult.safeTxHash,
-          domainHash: nestedSafeResult.domainHash,
-          messageHash: nestedSafeResult.messageHash,
-          encodedMessage: nestedSafeResult.encodedMessage,
-          nestedSafeAddress: data.nestedSafeAddress,
-          nestedSafeNonce: data.nestedSafeNonce,
-          nestedSafeVersion: nestedSafeVersion
-        };
+          nestedSafe = {
+            safeTxHash: nestedSafeResult.safeTxHash,
+            domainHash: nestedSafeResult.domainHash,
+            messageHash: nestedSafeResult.messageHash,
+            encodedMessage: nestedSafeResult.encodedMessage,
+            nestedSafeAddress: nestedSafeAddress,
+            nestedSafeNonce: nestedSafeNonce,
+            nestedSafeVersion: nestedSafeVersion
+          };
+        } catch (error) {
+          const secureError = processError(error, { context: 'nested_safe_calculation' });
+          SecureLogger.error('Nested Safe calculation failed', error as Error);
+          throw new Error(secureError.userMessage);
+        }
       }
 
+      // Sanitize all output data before setting result
       setResult({
         network: {
-          name: NETWORKS.find(n => n.value === data.network)?.label || data.network,
-          chain_id: data.chainId.toString(),
+          name: sanitizeHtml(NETWORKS.find(n => n.value === validatedData.network)?.label || validatedData.network),
+          chain_id: sanitizeHtml(validatedData.chainId.toString()),
         },
         transaction: {
-          multisig_address: data.address,
-          to: txParams.to,
-          nonce: txParams.nonce,
-          version: txParams.version,
-          value: txParams.value,
-          data: txParams.data,
-          encoded_message: encodedMessage,
+          multisig_address: sanitizeAddress(validatedData.address),
+          to: sanitizeAddress(txParams.to),
+          nonce: sanitizeHtml(txParams.nonce),
+          version: sanitizeHtml(txParams.version),
+          value: sanitizeHtml(txParams.value),
+          data: sanitizeHtml(txParams.data),
+          encoded_message: sanitizeHtml(encodedMessage),
           data_decoded: txParams.dataDecoded || {
-            method: txParams.data === "0x" ? "0x (ETH Transfer)" : "Unknown",
+            method: sanitizeHtml(txParams.data === "0x" ? "0x (ETH Transfer)" : "Unknown"),
             parameters: []
           },
           exec_transaction: {
-            encoded: execTransactionCall.encoded,
+            encoded: sanitizeHtml(execTransactionCall.encoded),
             decoded: execTransactionCall.decoded
           },
-          signatures: txParams.signatures !== "0x" ? txParams.signatures : undefined
+          signatures: txParams.signatures !== "0x" ? sanitizeHtml(txParams.signatures) : undefined
         },
         hashes: {
-          domain_hash: domainHash,
-          message_hash: messageHash,
-          safe_transaction_hash: safeTxHash,
+          domain_hash: sanitizeHtml(domainHash),
+          message_hash: sanitizeHtml(messageHash),
+          safe_transaction_hash: sanitizeHtml(safeTxHash),
         },
         nestedSafe: nestedSafe
       });
+      
+      SecureLogger.info('Hash calculation completed successfully');
 
     } catch (error: any) {
-      console.error("Error:", error);
+      const secureError = processError(error, {
+        method: data.method,
+        network: data.network,
+        address: data.address?.substring(0, 10) + '...', // Partial address for logging
+        context: 'transaction_calculation'
+      });
       
-      if (data.method === "api" && error.message.includes("API Error")) {
+      SecureLogger.error('Transaction calculation failed', error as Error);
+      
+      if (data.method === "api" && secureError.category === 'NETWORK') {
         setCalculationRequested(false);
       } else {
         setResult({
-          error: error.message || "An error occurred during hash calculation."
+          error: sanitizeHtml(secureError.userMessage)
         });
       }
       
       toast({
         title: "Error",
-        description: error.message || "An error occurred during hash calculation.",
+        description: secureError.userMessage,
         variant: "destructive",
       });
     } finally {
