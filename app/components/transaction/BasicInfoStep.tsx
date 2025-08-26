@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { UseFormReturn } from "react-hook-form";
 import { FormData } from "@/types/form-types";
-import { NETWORKS } from "@/app/constants";
+import { NETWORKS, SAFE_VERSIONS } from "@/app/constants";
 import { 
   FormField, 
   FormItem, 
@@ -26,6 +26,15 @@ interface BasicInfoStepProps {
 
 export default function BasicInfoStep({ form }: BasicInfoStepProps) {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const nestedSafeEnabled = form.watch("nestedSafeEnabled");
+  const mainSafeVersion = form.watch("version");
+  
+  // Set nested safe version to match main safe version when enabled or when main version changes
+  useEffect(() => {
+    if (nestedSafeEnabled && mainSafeVersion) {
+      form.setValue("nestedSafeVersion", mainSafeVersion);
+    }
+  }, [nestedSafeEnabled, mainSafeVersion, form]);
 
   const handleTooltipToggle = (id: string) => {
     setActiveTooltip(activeTooltip === id ? null : id);
@@ -244,7 +253,7 @@ export default function BasicInfoStep({ form }: BasicInfoStepProps) {
                 </SelectTrigger>
               </FormControl>
               <SelectContent>
-                {["0.0.1", "0.1.0", "1.0.0", "1.1.0", "1.1.1", "1.2.0", "1.3.0", "1.4.1"].map((version) => (
+                {SAFE_VERSIONS.map((version) => (
                   <SelectItem key={version} value={version}>
                     {version}
                   </SelectItem>
@@ -254,6 +263,164 @@ export default function BasicInfoStep({ form }: BasicInfoStepProps) {
           </FormItem>
         )}
       />
+
+      <FormField
+        control={form.control}
+        name="nestedSafeEnabled"
+        render={({ field }) => {
+          const { value, ...inputProps } = field;
+          return (
+            <FormItem className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                {...inputProps}
+                checked={!!value}
+                onChange={(e) => field.onChange(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <FormLabel className="!mt-0">Use Nested Safe</FormLabel>
+            </FormItem>
+          );
+        }}
+      />
+
+      {nestedSafeEnabled && (
+        <>
+          <FormField
+            control={form.control}
+            name="nestedSafeAddress"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="flex items-center gap-1">Nested Safe Address
+                  <Tooltip open={activeTooltip === "nested-safe-address"}>
+                    <TooltipTrigger asChild>
+                      <span 
+                        className="cursor-pointer" 
+                        onClick={() => handleTooltipToggle("nested-safe-address")}
+                        onMouseEnter={() => setActiveTooltip("nested-safe-address")}
+                        onMouseLeave={() => setActiveTooltip(null)}
+                      >
+                        <HelpCircle className="ml-1 w-4 h-4 text-muted-foreground" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent 
+                      className="pointer-events-none max-w-xs break-words p-2 rounded-md bg-black text-white dark:bg-white dark:text-black"
+                      sideOffset={5}
+                    > 
+                      <p>The address of the nested Safe contract.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="Enter nested safe address (0x...)"
+                    leftIcon={<PixelAvatar address={field.value || ''} />}
+                    {...field}
+                    value={field.value || ''}
+                    onChange={(e) => {
+                      if (e.target.value === '') {
+                        field.onChange('');
+                      } else {
+                        const address = e.target.value.match(/0x[a-fA-F0-9]{40}/)?.[0];
+                        if (address) {
+                          field.onChange(address);
+                        } else {
+                          field.onChange(e.target.value);
+                        }
+                      }
+                    }}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          
+          <FormField
+            control={form.control}
+            name="nestedSafeNonce"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="flex items-center gap-1">Nested Safe Nonce
+                  <Tooltip open={activeTooltip === "nested-safe-nonce"}>
+                    <TooltipTrigger asChild>
+                      <span 
+                        className="cursor-pointer" 
+                        onClick={() => handleTooltipToggle("nested-safe-nonce")}
+                        onMouseEnter={() => setActiveTooltip("nested-safe-nonce")}
+                        onMouseLeave={() => setActiveTooltip(null)}
+                      >
+                        <HelpCircle className="ml-1 w-4 h-4 text-muted-foreground" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent 
+                      className="pointer-events-none max-w-xs break-words p-2 rounded-md bg-black text-white dark:bg-white dark:text-black"
+                      sideOffset={5}
+                    > 
+                      <p>The nonce of the nested Safe transaction you want to validate.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    placeholder="Enter nested safe nonce"
+                    {...field}
+                    value={field.value || ''}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="nestedSafeVersion"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="flex items-center gap-1">Nested Safe Version
+                  <Tooltip open={activeTooltip === "nested-safe-version"}>
+                    <TooltipTrigger asChild>
+                      <span 
+                        className="cursor-pointer" 
+                        onClick={() => handleTooltipToggle("nested-safe-version")}
+                        onMouseEnter={() => setActiveTooltip("nested-safe-version")}
+                        onMouseLeave={() => setActiveTooltip(null)}
+                      >
+                        <HelpCircle className="ml-1 w-4 h-4 text-muted-foreground" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent 
+                      className="pointer-events-none max-w-xs break-words p-2 rounded-md bg-black text-white dark:bg-white dark:text-black"
+                      sideOffset={5}
+                    > 
+                      <p>Defaults to same version as main Safe but can be changed if needed.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value || mainSafeVersion || ''}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select nested Safe version">
+                        {field.value || mainSafeVersion}
+                      </SelectValue>
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {SAFE_VERSIONS.map((version) => (
+                      <SelectItem key={version} value={version}>
+                        {version}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormItem>
+            )}
+          />
+        </>
+      )}
     </div>
     </TooltipProvider>
   );

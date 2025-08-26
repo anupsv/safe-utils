@@ -173,5 +173,40 @@ export const NETWORKS = [
       chainId: 10200,
       gnosisPrefix: "chiado",
       logo: "networks/gnosis.ico",
+    },
+    {
+      value: "hemi",
+      label: "Hemi",
+      chainId: 43111,
+      gnosisPrefix: "hemi",
+      logo: "networks/hemi.ico",
+    },
+    {
+      value: "lens",
+      label: "Lens",
+      chainId: 232,
+      gnosisPrefix: "lens",
+      logo: "networks/lens.ico",
+    },
+    {
+      value: "katana",
+      label: "Katana",
+      chainId: 747474,
+      gnosisPrefix: "katana",
+      logo: "networks/katana.ico",
     }
   ];
+
+
+export const SAFE_VERSIONS = [
+  "0.0.1",
+  "0.1.0",
+  "1.0.0",
+  "1.1.0",
+  "1.1.1",
+  "1.2.0",
+  "1.3.0",
+  "1.4.1"
+];
+
+export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
