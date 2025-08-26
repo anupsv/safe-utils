@@ -1,0 +1,396 @@
+name: Security Testing Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+
+jobs:
+  dependency-security-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'app/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: npm ci --only=production
+
+      - name: Run npm audit
+        working-directory: ./app
+        run: |
+          npm audit --audit-level=moderate --json > security-audit.json || true
+          echo "NPM_AUDIT_RESULTS=$(cat security-audit.json)" >> $GITHUB_ENV
+
+      - name: Security audit with audit-ci
+        working-directory: ./app
+        run: |
+          npx audit-ci --config audit-ci.json || true
+
+      - name: Upload security scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: security-results.sarif
+        continue-on-error: true
+
+  static-code-security-analysis:
+    name: Static Code Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript', 'typescript' ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'app/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: npm ci
+
+      - name: Build application
+        working-directory: ./app
+        run: npm run build
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:${{matrix.language}}"
+
+  semgrep-security-scan:
+    name: Semgrep Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    container:
+      image: returntocorp/semgrep
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep --config=auto \
+                  --json \
+                  --output=semgrep-results.json \
+                  --metrics=off \
+                  --quiet \
+                  ./app/
+
+      - name: Upload Semgrep results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: semgrep-results.json
+        continue-on-error: true
+
+  docker-security-scan:
+    name: Docker Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t safe-utils:security-test .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'safe-utils:security-test'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+        continue-on-error: true
+
+      - name: Run Hadolint (Dockerfile linter)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          format: sarif
+          output-file: hadolint-results.sarif
+          no-fail: true
+
+      - name: Upload Hadolint results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: hadolint-results.sarif
+        continue-on-error: true
+
+  security-unit-tests:
+    name: Security Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'app/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: npm ci
+
+      - name: Run security-focused unit tests
+        working-directory: ./app
+        run: |
+          npm test -- --testPathPattern=security --coverage --coverageReporters=lcov --coverageDirectory=coverage
+        env:
+          NODE_ENV: test
+
+      - name: Upload test coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./app/coverage/lcov.info
+          flags: security-tests
+          name: security-coverage
+        continue-on-error: true
+
+  penetration-testing:
+    name: Basic Penetration Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [dependency-security-scan, static-code-security-analysis]
+
+    services:
+      app:
+        image: node:20-alpine
+        ports:
+          - 3000:3000
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'app/package-lock.json'
+
+      - name: Install and start application
+        working-directory: ./app
+        run: |
+          npm ci
+          npm run build
+          npm start &
+          sleep 30
+
+      - name: Install OWASP ZAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2_14_0_unix.sh
+          chmod +x ZAP_2_14_0_unix.sh
+          sudo ./ZAP_2_14_0_unix.sh -q
+
+      - name: Run OWASP ZAP baseline scan
+        run: |
+          /opt/zaproxy/zap-baseline.py \
+            -t http://localhost:3000 \
+            -J zap-report.json \
+            -w zap-report.md \
+            -r zap-report.html \
+            -I \
+            -T 10 \
+            --hook=/opt/zaproxy/scripts/passive_scan.py
+
+      - name: Upload ZAP results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: zap-security-report
+          path: |
+            zap-report.json
+            zap-report.md
+            zap-report.html
+
+  security-headers-test:
+    name: Security Headers Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'app/package-lock.json'
+
+      - name: Install and start application
+        working-directory: ./app
+        run: |
+          npm ci
+          npm run build
+          npm start &
+          sleep 30
+
+      - name: Test security headers
+        run: |
+          # Test for required security headers
+          echo "Testing security headers..."
+          
+          response=$(curl -I -s http://localhost:3000)
+          
+          # Check for security headers
+          echo "$response" | grep -i "Content-Security-Policy" || exit 1
+          echo "$response" | grep -i "X-Frame-Options" || exit 1
+          echo "$response" | grep -i "X-Content-Type-Options" || exit 1
+          echo "$response" | grep -i "Strict-Transport-Security" || exit 1
+          echo "$response" | grep -i "X-XSS-Protection" || exit 1
+          
+          echo "All required security headers are present!"
+
+      - name: Test CSP violations endpoint
+        run: |
+          # Test CSP reporting endpoint
+          curl -X POST http://localhost:3000/api/security/csp-report \
+            -H "Content-Type: application/csp-report" \
+            -d '{"csp-report":{"violated-directive":"script-src","blocked-uri":"data:","document-uri":"http://localhost:3000/"}}'
+
+  typescript-security-check:
+    name: TypeScript Security Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'app/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: npm ci
+
+      - name: Check TypeScript strict mode
+        working-directory: ./app
+        run: |
+          # Verify strict mode is enabled
+          if ! grep -q '"strict": true' tsconfig.json; then
+            echo "Error: TypeScript strict mode is not enabled"
+            exit 1
+          fi
+          
+          # Verify additional strict checks
+          if ! grep -q '"noImplicitAny": true' tsconfig.json; then
+            echo "Error: noImplicitAny is not enabled"
+            exit 1
+          fi
+          
+          echo "TypeScript security configuration verified!"
+
+      - name: Run TypeScript compiler check
+        working-directory: ./app
+        run: npx tsc --noEmit
+
+  security-report:
+    name: Security Report
+    runs-on: ubuntu-latest
+    needs: [
+      dependency-security-scan,
+      static-code-security-analysis,
+      semgrep-security-scan,
+      docker-security-scan,
+      security-unit-tests,
+      penetration-testing,
+      security-headers-test,
+      typescript-security-check
+    ]
+    if: always()
+
+    steps:
+      - name: Generate security summary
+        run: |
+          echo "# Security Testing Results" >> security-summary.md
+          echo "" >> security-summary.md
+          echo "## Test Results" >> security-summary.md
+          echo "- Dependency Security Scan: ${{ needs.dependency-security-scan.result }}" >> security-summary.md
+          echo "- Static Code Analysis: ${{ needs.static-code-security-analysis.result }}" >> security-summary.md
+          echo "- Semgrep Security Scan: ${{ needs.semgrep-security-scan.result }}" >> security-summary.md
+          echo "- Docker Security Scan: ${{ needs.docker-security-scan.result }}" >> security-summary.md
+          echo "- Security Unit Tests: ${{ needs.security-unit-tests.result }}" >> security-summary.md
+          echo "- Penetration Testing: ${{ needs.penetration-testing.result }}" >> security-summary.md
+          echo "- Security Headers Test: ${{ needs.security-headers-test.result }}" >> security-summary.md
+          echo "- TypeScript Security Check: ${{ needs.typescript-security-check.result }}" >> security-summary.md
+          echo "" >> security-summary.md
+          echo "Generated on: $(date)" >> security-summary.md
+
+      - name: Upload security summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-summary
+          path: security-summary.md

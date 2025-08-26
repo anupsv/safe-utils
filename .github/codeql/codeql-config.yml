@@ -1,0 +1,27 @@
+name: "Safe Utils CodeQL Security Configuration"
+
+disable-default-queries: false
+
+queries:
+  - name: security-extended
+    uses: security-extended
+  - name: security-and-quality
+    uses: security-and-quality
+
+query-filters:
+  - exclude:
+      id: js/unused-local-variable
+
+paths-ignore:
+  - "**/*.test.js"
+  - "**/*.test.ts"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/.next/**"
+  - "**/coverage/**"
+
+paths:
+  - "app/lib/**"
+  - "app/utils/**"
+  - "app/api/**"
+  - "app/middleware.ts"
