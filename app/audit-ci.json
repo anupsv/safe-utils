@@ -1,0 +1,11 @@
+{
+  "moderate": true,
+  "high": true,
+  "critical": true,
+  "allowlist": [],
+  "report-type": "full",
+  "output-format": "text",
+  "pass-enoaudit": false,
+  "show-not-found": false,
+  "skip-dev": true
+}

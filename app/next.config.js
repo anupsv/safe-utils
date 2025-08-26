@@ -40,9 +40,9 @@ const nextConfig = {
   // Enable standalone output for Docker
   output: 'standalone',
   
-  // Disable telemetry for privacy
+  // Disable telemetry for privacy (Note: telemetry is not in experimental in newer Next.js versions)
   experimental: {
-    telemetry: false,
+    // telemetry: false, // Removed as it's not a valid experimental option
   },
 
   // Webpack configuration for security

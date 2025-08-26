@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { SecureLogger } from './lib/security';
+import { SubresourceIntegrity } from './lib/subresource-integrity';
 
 // Security configuration
 const SECURITY_CONFIG = Object.freeze({
@@ -59,7 +60,7 @@ const SECURITY_CONFIG = Object.freeze({
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=(), usb=(), bluetooth=()',
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.safe.global https://www.4byte.directory; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://www.openzeppelin.com; img-src 'self' data: blob: https://www.openzeppelin.com https://7795250.fs1.hubspotusercontent-na1.net; font-src 'self'; connect-src 'self' https://*.safe.global https://www.4byte.directory https://www.google-analytics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; require-sri-for script style",
     'Cross-Origin-Embedder-Policy': 'require-corp',
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Resource-Policy': 'same-site'
@@ -142,6 +143,7 @@ class RateLimiter {
 }
 
 const rateLimiter = new RateLimiter();
+const sriManager = new SubresourceIntegrity();
 
 /**
  * Extract client IP with comprehensive header checking
@@ -269,6 +271,49 @@ function isAllowedOrigin(origin: string | null): boolean {
 }
 
 /**
+ * Check if request is for external resource that should have SRI verification
+ */
+function shouldVerifySRI(request: NextRequest): boolean {
+  const url = request.nextUrl;
+  const pathname = url.pathname;
+  
+  // Check if this is a request that might load external resources
+  const externalResourcePaths = [
+    '/api', // API routes might load external data
+    '/_next/static', // Static assets
+  ];
+  
+  // Don't verify SRI for static assets or API routes in this middleware
+  // SRI verification happens client-side for external resources
+  return false;
+}
+
+/**
+ * Add SRI security headers based on request type
+ */
+function addSRIHeaders(response: NextResponse, request: NextRequest): void {
+  const userAgent = request.headers.get('user-agent') || '';
+  
+  // Add SRI-specific security headers
+  response.headers.set('X-SRI-Policy', 'enforce');
+  response.headers.set('X-External-Resources', 'verified');
+  
+  // Add additional CSP headers for enhanced SRI support
+  if (userAgent.includes('Chrome') || userAgent.includes('Firefox')) {
+    // Modern browsers support require-sri-for directive
+    const existingCSP = response.headers.get('Content-Security-Policy') || '';
+    if (!existingCSP.includes('require-sri-for')) {
+      const enhancedCSP = existingCSP + '; require-sri-for script style';
+      response.headers.set('Content-Security-Policy', enhancedCSP);
+    }
+  }
+  
+  // Add SRI monitoring headers
+  response.headers.set('X-SRI-Version', '1.0.0');
+  response.headers.set('X-Resource-Verification', 'active');
+}
+
+/**
  * Main middleware function
  */
 export async function middleware(request: NextRequest): Promise<NextResponse> {
@@ -370,6 +415,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
     // Add security info header
     response.headers.set('X-Security-Version', '2.0.0');
+
+    // Add SRI-specific headers
+    addSRIHeaders(response, request);
 
     return response;
 

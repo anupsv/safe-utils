@@ -8,7 +8,8 @@ import { fetchSecureTransactionDataFromApi } from "@/utils/secure-api";
 import { FormData, CalculationResult, TransactionParams } from "@/types/form-types";
 import { decodeTransactionData } from "@/utils/decoding/transactionData";
 import { encodeExecTransaction } from "@/utils/encoding/execTransaction";
-import { SecureValidator, SecureLogger, processError } from "@/lib/security";
+import { SecureValidator, SecureLogger } from "@/lib/security";
+import { processError } from "@/lib/secure-error-handler";
 import { sanitizeHtml, sanitizeAddress } from "@/lib/secure-output";
 import { cryptoIntegrity } from "@/lib/crypto-integrity";
 
@@ -266,7 +267,8 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
         try {
           // Validate nested Safe parameters
           const nestedSafeAddress = validator.validateEthereumAddress(data.nestedSafeAddress);
-          const nestedSafeNonce = validator.validateNonce(data.nestedSafeNonce).toString();
+          const nestedSafeNonceNumber = validator.validateNonce(data.nestedSafeNonce);
+          const nestedSafeNonce = nestedSafeNonceNumber.toString();
           const nestedSafeVersion = validator.sanitizeString(data.nestedSafeVersion || txParams.version);
 
           const nestedSafeResult = await calculator.calculateNestedSafeApprovalHash(
@@ -293,7 +295,7 @@ export function useTransactionCalculation(searchParams: ReadonlyURLSearchParams)
             messageHash: nestedSafeResult.messageHash,
             encodedMessage: nestedSafeResult.encodedMessage,
             nestedSafeAddress: nestedSafeAddress,
-            nestedSafeNonce: nestedSafeNonce,
+            nestedSafeNonce: nestedSafeNonceNumber,
             nestedSafeVersion: nestedSafeVersion
           };
         } catch (error) {

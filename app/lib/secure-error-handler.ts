@@ -491,8 +491,8 @@ export class UltraSecureErrorHandler {
     const bySeverity = {} as Record<ErrorSeverity, number>;
 
     // Initialize counters
-    Object.values(ErrorCategory).forEach(cat => byCategory[cat] = 0);
-    Object.values(ErrorSeverity).forEach(sev => bySeverity[sev] = 0);
+    Object.values(ErrorCategory).forEach(cat => byCategory[cat as ErrorCategory] = 0);
+    Object.values(ErrorSeverity).forEach(sev => bySeverity[sev as ErrorSeverity] = 0);
 
     // Count errors
     this.errorHistory.forEach(error => {

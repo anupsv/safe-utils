@@ -135,8 +135,7 @@ async function secureApiFetch(url: string, options: RequestInit = {}): Promise<R
       'Cache-Control': 'no-cache',
       ...options.headers
     },
-    timeout: 10000, // 10 second timeout
-    signal: AbortSignal.timeout(10000)
+    signal: AbortSignal.timeout(10000) // 10 second timeout
   };
 
   try {

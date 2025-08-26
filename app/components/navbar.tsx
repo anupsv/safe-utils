@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { SecureImage } from './security/SecureImage';
 import { ModeToggle } from './ModeToggle';
 import { Button } from './ui/button';
 import dynamic from 'next/dynamic';
@@ -452,19 +453,23 @@ const Navbar: React.FC = () => {
 
                                       {item.icon && (
                                         <>
-                                          <Image
+                                          <SecureImage
                                             className="w-10 dark:hidden"
                                             src={item.icon.light}
                                             alt=""
                                             width={40}
                                             height={40}
+                                            enableSRI={true}
+                                            timeout={3000}
                                           />
-                                          <Image
+                                          <SecureImage
                                             className="w-10 hidden dark:block"
                                             src={item.icon.dark}
                                             alt=""
                                             width={40}
                                             height={40}
+                                            enableSRI={true}
+                                            timeout={3000}
                                           />
                                         </>
                                       )}
@@ -698,21 +703,25 @@ const Navbar: React.FC = () => {
                                   >
                                     {item.mobileIcon && (
                                       <>
-                                        <Image
+                                        <SecureImage
                                          role="presentation"
                                           className="w-[26px] h-[26px] grayscale dark:hidden"
                                           src={item.mobileIcon.light}
                                           alt=""
                                           width={26}
                                           height={26}
+                                          enableSRI={true}
+                                          timeout={3000}
                                         />
-                                        <Image
+                                        <SecureImage
                                          role="presentation"
                                           className="w-[26px] h-[26px] grayscale hidden dark:block "
                                           src={item.mobileIcon.dark}
                                           alt=""
                                           width={26}
                                           height={26}
+                                          enableSRI={true}
+                                          timeout={3000}
                                         />
                                       </>
                                     )}

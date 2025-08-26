@@ -4,7 +4,8 @@ import './globals.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Footer } from '@/components/footer'
 import { ThemeProvider } from '@/components/ThemeProvider'
-import { GoogleAnalytics } from '@next/third-parties/google'
+import { SecureGoogleAnalytics } from '@/components/security/SecureGoogleAnalytics'
+import { SRIProvider } from '@/components/security/SRIProvider'
 import Navbar from '@/components/navbar'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -45,20 +46,22 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <TooltipProvider>
-            <div className="min-h-screen flex flex-col bg-gradient-main dark:bg-gradient-main-dark">
-              <div className="flex flex-col flex-grow">
-                <Navbar />
-                <main className="flex-grow flex flex-col items-center justify-start pt-5 mt-5">
-                  {children}
-                </main>
+        <SRIProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <TooltipProvider>
+              <div className="min-h-screen flex flex-col bg-gradient-main dark:bg-gradient-main-dark">
+                <div className="flex flex-col flex-grow">
+                  <Navbar />
+                  <main className="flex-grow flex flex-col items-center justify-start pt-5 mt-5">
+                    {children}
+                  </main>
+                </div>
+                <Footer />
               </div>
-              <Footer />
-            </div>
-          </TooltipProvider>
-          <GoogleAnalytics gaId="G-SY66CZ3XZT" />
-        </ThemeProvider>
+            </TooltipProvider>
+            <SecureGoogleAnalytics gaId="G-SY66CZ3XZT" enableSRI={true} />
+          </ThemeProvider>
+        </SRIProvider>
       </body>
     </html>
   )
