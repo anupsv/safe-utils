@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "lavamoat": "^9.0.15"
+  }
+}
