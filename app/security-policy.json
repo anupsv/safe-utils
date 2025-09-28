@@ -1,0 +1,31 @@
+{
+  "onerror": "exit",
+  "resources": {
+    "./": {
+      "integrity": true,
+      "dependencies": {
+        "next": "./node_modules/next/",
+        "react": "./node_modules/react/",
+        "ethers": "./node_modules/ethers/"
+      }
+    },
+    "./node_modules/": {
+      "integrity": false,
+      "dependencies": true
+    },
+    "/app/": {
+      "integrity": true,
+      "dependencies": false
+    }
+  },
+  "scopes": {
+    "./": {
+      "dependencies": {
+        "next": true,
+        "react": true,
+        "react-dom": true,
+        "ethers": true
+      }
+    }
+  }
+}
